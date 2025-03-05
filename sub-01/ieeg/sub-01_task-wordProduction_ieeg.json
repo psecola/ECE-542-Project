@@ -1,0 +1,21 @@
+{
+    "TaskName": "wordProduction",
+    "Manufacturer": "BrainProducts",
+    "PowerLineFrequency": 50.0,
+    "SamplingFrequency": 1024.0,
+    "SoftwareFilters": "n/a",
+    "RecordingDuration": 300.302734375,
+    "RecordingType": "continuous",
+    "iEEGReference": "LI1",
+    "ECOGChannelCount": 0,
+    "SEEGChannelCount": 127,
+    "EEGChannelCount": 0,
+    "EOGChannelCount": 0,
+    "ECGChannelCount": 0,
+    "EMGChannelCount": 0,
+    "MiscChannelCount": 0,
+    "TriggerChannelCount": 0,
+    "iEEGGround": "RY12",
+    "TaskDescription": "Speech production of 100 unique Dutch words",
+    "Instructions": "Speak the word presented on the screen out-loud"
+}
