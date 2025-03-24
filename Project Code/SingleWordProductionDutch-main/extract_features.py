@@ -1,5 +1,5 @@
 import os
-
+import sys
 import pandas as pd
 import numpy as np 
 import numpy.matlib as matlib
@@ -10,6 +10,9 @@ import scipy.io.wavfile
 import scipy.fftpack
 
 from pynwb import NWBHDF5IO
+
+#Import MelFilterBank from the mel module
+sys.path.insert(0, r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Code\SingleWordProductionDutch-main')
 import MelFilterBank as mel
 
 #Small helper function to speed up the hilbert transform by extending the length of data to the next power of 2
@@ -103,7 +106,11 @@ def downsampleLabels(labels, sr, windowLength=0.05, frameshift=0.01):
     for w in range(numWindows):
         start = int(np.floor((w*frameshift)*sr))
         stop = int(np.floor(start+windowLength*sr))
-        newLabels[w]=scipy.stats.mode(labels[start:stop])[0][0].encode("ascii", errors="ignore").decode()
+        # Depreciated - Pierce
+        # newLabels[w]=scipy.stats.mode(labels[start:stop])[0][0].encode("ascii", errors="ignore").decode()
+        values, counts = np.unique(words[0:1000], return_counts=True)
+        max_count_index = np.argmax(counts)
+        newLabels[w] = values[max_count_index].encode("ascii", errors="ignore").decode()
     return newLabels
 
 def extractMelSpecs(audio, sr, windowLength=0.05, frameshift=0.01):
@@ -128,7 +135,9 @@ def extractMelSpecs(audio, sr, windowLength=0.05, frameshift=0.01):
         Logarithmic mel scaled spectrogram
     """
     numWindows=int(np.floor((audio.shape[0]-windowLength*sr)/(frameshift*sr)))
-    win = scipy.hanning(np.floor(windowLength*sr + 1))[:-1]
+    win = scipy.signal.windows.hann(int(np.floor(windowLength*sr + 1)))[:-1]
+    # Depreciated - Pierce
+    # win = scipy.hanning(np.floor(windowLength*sr + 1))[:-1]
     spectrogram = np.zeros((numWindows, int(np.floor(windowLength*sr / 2 + 1))),dtype='complex')
     for w in range(numWindows):
         start_audio = int(np.floor((w*frameshift)*sr))
@@ -169,10 +178,19 @@ if __name__=="__main__":
     frameshift = 0.01
     modelOrder = 4
     stepSize = 5
-    path_bids = r'./SingleWordProductionDutch-iBIDS'
-    path_output = r'./features'
+    
+    # Change your directory to write files
+    os.chdir(r"C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Data\transformed_data")
+
+    # Edit this to be the unique browser path to the nwb_files directory
+    path_bids = r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Data'
+    path_output = r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Data\transformed_data'
     participants = pd.read_csv(os.path.join(path_bids,'participants.tsv'), delimiter='\t')
+    
     for p_id, participant in enumerate(participants['participant_id']):
+        
+        # Change your directory to write files
+        os.chdir(os.path.join(path_output,f'{participant}'))
         
         #Load data
         io = NWBHDF5IO(os.path.join(path_bids,participant,'ieeg',f'{participant}_task-wordProduction_ieeg.nwb'), 'r')
@@ -187,12 +205,19 @@ if __name__=="__main__":
         words = nwbfile.acquisition['Stimulus'].data[:]
         words = np.array(words, dtype=str)
         io.close()
+
+        print('Done Reading NWB File')
+
         #channels
         channels = pd.read_csv(os.path.join(path_bids,participant,'ieeg',f'{participant}_task-wordProduction_channels.tsv'), delimiter='\t')
         channels = np.array(channels['name'])
 
+        print('Done Reading Channels File')
+
         #Extract HG features
         feat = extractHG(eeg,eeg_sr, windowLength=winL,frameshift=frameshift)
+
+        print('Done Extracting Features')
 
         #Stack features
         feat = stackFeatures(feat,modelOrder=modelOrder,stepSize=stepSize)
@@ -205,8 +230,12 @@ if __name__=="__main__":
         os.makedirs(os.path.join(path_output), exist_ok=True)
         scipy.io.wavfile.write(os.path.join(path_output,f'{participant}_orig_audio.wav'),audio_sr,scaled)   
 
+        print('Done Processing Audio')
+
         #Extract spectrogram
         melSpec = extractMelSpecs(scaled,audio_sr,windowLength=winL,frameshift=frameshift)
+
+        print('Done Extracting Spectrogram')
         
         #Align to EEG features
         words = downsampleLabels(words,eeg_sr,windowLength=winL,frameshift=frameshift)
@@ -218,11 +247,18 @@ if __name__=="__main__":
             melSpec = melSpec[:tLen,:]
             feat = feat[:tLen,:]
         
+        print('Done aligning labels and and audio spectrogram')
+        
         #Create feature names by appending the temporal shift 
         feature_names = nameVector(channels[:,None], modelOrder=modelOrder)
+        
+        
+        #Save everything - check if file exists first
+        np.save(os.path.join(path_output,f'{participant}','EEG_feat.npy'), feat)
+        np.save(os.path.join(path_output,f'{participant}', 'procWords.npy'), words)
+        np.save(os.path.join(path_output,f'{participant}', 'Mel_spec.npy'), melSpec)
+        np.save(os.path.join(path_output,f'{participant}','feat_names.npy'), feature_names)
+        
+        print(participant, 'Done')
 
-        #Save everything
-        np.save(os.path.join(path_output,f'{participant}_feat.npy'), feat)
-        np.save(os.path.join(path_output,f'{participant}_procWords.npy'), words)
-        np.save(os.path.join(path_output,f'{participant}_spec.npy'), melSpec)
-        np.save(os.path.join(path_output,f'{participant}_feat_names.npy'), feature_names)
+        
