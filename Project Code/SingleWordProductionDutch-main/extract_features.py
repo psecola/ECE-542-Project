@@ -44,10 +44,10 @@ def extractHG(data, sr, windowLength=0.05, frameshift=0.01):
     #Filter High-Gamma Band
     sos = scipy.signal.iirfilter(4, [70/(sr/2),170/(sr/2)],btype='bandpass',output='sos')
     data = scipy.signal.sosfiltfilt(sos,data,axis=0)
-    #Attenuate first harmonic of line noise
+    #Attenuate first harmonic of line noise - Dutch 50hz Line Noise
     sos = scipy.signal.iirfilter(4, [98/(sr/2),102/(sr/2)],btype='bandstop',output='sos')
     data = scipy.signal.sosfiltfilt(sos,data,axis=0)
-    #Attenuate second harmonic of line noise
+    #Attenuate second harmonic of line noise - Dutch 50hz Line Noise
     sos = scipy.signal.iirfilter(4, [148/(sr/2),152/(sr/2)],btype='bandstop',output='sos')
     data = scipy.signal.sosfiltfilt(sos,data,axis=0)
     #Create feature space
@@ -76,6 +76,7 @@ def stackFeatures(features, modelOrder=4, stepSize=5):
     featStacked: array (windows, feat*(2*modelOrder+1))
         Stacked feature matrix
     """
+    # includes 200ms windows before and after current window as defualt
     featStacked=np.zeros((features.shape[0]-(2*modelOrder*stepSize),(2*modelOrder+1)*features.shape[1]))
     for fNum,i in enumerate(range(modelOrder*stepSize,features.shape[0]-modelOrder*stepSize)):
         ef=features[i-modelOrder*stepSize:i+modelOrder*stepSize+1:stepSize,:]
