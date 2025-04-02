@@ -1,5 +1,5 @@
 import os
-
+import sys
 import numpy as np
 import scipy.io.wavfile as wavfile
 from scipy.stats import pearsonr
@@ -7,6 +7,8 @@ from sklearn.model_selection import KFold
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 
+#Import MelFilterBank from the mel module
+sys.path.insert(0, r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Code\SingleWordProductionDutch-main')
 import reconstructWave as rW
 import MelFilterBank as mel
 
@@ -30,46 +32,88 @@ def createAudio(spectrogram, audiosr=16000, winLength=0.05, frameshift=0.01):
     scaled: array
         Scaled audio waveform
     """
+    
+    # Initializes log mel-spec transformation function
+    # Specify the spec (total time sampled), number of freq components, audio sampleing rate
     mfb = mel.MelFilterBank(int((audiosr*winLength)/2+1), spectrogram.shape[1], audiosr)
+    
+    # Establish how many folds you like to create out of mel spec
     nfolds = 10
+    
+    # Computes the time window lengths based on the number of data fold we want (row is time)
     hop = int(spectrogram.shape[0]/nfolds)
+    
+    # Create an 1D list array (vector) to append the audio for corresponding mel spec values for each time window
+    # Number of values in vector should correspond to the number of nfolds
     rec_audio = np.array([])
+    
+    # Returns mel-spectrogram from log-mel spectrogram
     for_reconstruction = mfb.fromLogMels(spectrogram)
-    for w in range(0,spectrogram.shape[0],hop):
+    for w in range(0,spectrogram.shape[0],hop): #each w is the starting point of a window
+        print(w)
+        
+        # Extracts a window of the given Mel-spectrogram, the min() function is used if we need to truncate the window
+        # Rows = time, columns = Mel-Freq, values = amplitude 
         spec = for_reconstruction[w:min(w+hop,for_reconstruction.shape[0]),:]
+        
+        # Reconstructs the waveform audio (person's voice) from the windowed spectrogram segment using the method described by Griffin paper
         rec = rW.reconstructWavFromSpectrogram(spec,spec.shape[0]*spec.shape[1],fftsize=int(audiosr*winLength),overlap=int(winLength/frameshift))
+        
+        # Append the audio waveform to the collection of audio waveforms for a single spectrogram
         rec_audio = np.append(rec_audio,rec)
+    
+    # Scales the reconstructed audio output based on abs. max value of the amplitude of recorded
+    #Normalizes between -1 and 1 then multiplies the 16-bit audio value
     scaled = np.int16(rec_audio/np.max(np.abs(rec_audio)) * 32767)
     return scaled
 
 
 if __name__=="__main__":
-    feat_path = r'./features'
-    result_path = r'./results'
+    
+    #Set local paths
+    path_output = r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Data\transformed_data'
+    result_path = r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Data\transformed_data'
+    
+    #set a list of participant ids
     pts = ['sub-%02d'%i for i in range(1,11)]
-
+    
+    # Define window length (50ms), frameshit (10ms), and  audio sampling rate
     winLength = 0.05
     frameshift = 0.01
     audiosr = 16000
-
+    
+    # Define number of folds to break up the spectrogram
     nfolds = 10
     kf = KFold(nfolds,shuffle=False)
+    
+    # Sets linear regression function; ignore n_jobs for computational efficiency
     est = LinearRegression(n_jobs=5)
+    
+    #Set PCA algorithm as a function
     pca = PCA()
+    
+    #Set number of PCA components
     numComps = 50
     
     #Initialize empty matrices for correlation results, randomized contols and amount of explained variance
+    # Rows = participants, Cols = number of folds "windows", Depth = time window, values = PCA component value
     allRes = np.zeros((len(pts),nfolds,23))
+    
+    # Rows = participants, Cols = number of folds, values = total variance explained by PCA components
     explainedVariance = np.zeros((len(pts),nfolds))
+    
+    # number of times we randomize the order of spectrograms
     numRands = 1000
+    
+    # Rows = participants, Cols = number of spectro randimizations, Depth = time window, values = total variance explained by PCA components
     randomControl = np.zeros((len(pts),numRands, 23))
 
     for pNr, pt in enumerate(pts):
-        #Load the data
-        spectrogram = np.load(os.path.join(feat_path,f'{pt}_spec.npy'))
-        data = np.load(os.path.join(feat_path,f'{pt}_feat.npy'))
-        labels = np.load(os.path.join(feat_path,f'{pt}_procWords.npy'))
-        featName = np.load(os.path.join(feat_path,f'{pt}_feat_names.npy'))
+        #Load the transformed data from local directory
+        spectrogram = np.load(os.path.join(path_output,f'{pt}', 'Mel_spec.npy'))
+        data = np.load(os.path.join(path_output,f'{pt}','EEG_feat.npy'))
+        labels = np.load(os.path.join(path_output,f'{pt}', 'procWords.npy'))
+        featName = np.load(os.path.join(path_output,f'{pt}','feat_names.npy'))
         
         #Initialize an empty spectrogram to save the reconstruction to
         rec_spec = np.zeros(spectrogram.shape)
@@ -116,7 +160,11 @@ if __name__=="__main__":
             for specBin in range(spectrogram.shape[1]):
                 if np.any(np.isnan(rec_spec)):
                     print('%s has %d broken samples in reconstruction' % (pt, np.sum(np.isnan(rec_spec))))
+                
+                # Output pearson's correlation r (r) and associated p-value (p)
                 r, p = pearsonr(spectrogram[:,specBin], shuffled[:,specBin])
+                
+                # Append r value to the particpant, randomization round, and time window
                 randomControl[pNr, randRound,specBin]=r
 
 
