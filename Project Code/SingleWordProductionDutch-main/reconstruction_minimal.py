@@ -118,25 +118,41 @@ if __name__=="__main__":
         #Initialize an empty spectrogram to save the reconstruction to
         rec_spec = np.zeros(spectrogram.shape)
         #Save the correlation coefficients for each fold
+        #Each fold is # of time windows in EEG features/# of folds
         rs = np.zeros((nfolds,spectrogram.shape[1]))
+        
+        # Train and test are collections of consecutive indices to split data
         for k,(train, test) in enumerate(kf.split(data)):
+
             #Z-Normalize with mean and std from the training data
+            #data[train,:] is of shape len(train)x1098 where N # of time windows from EEG_feat
             mu=np.mean(data[train,:],axis=0)
             std=np.std(data[train,:],axis=0)
             trainData=(data[train,:]-mu)/std
+            #data[test,:] is of shape len(test)x1098 where N # of time windows from EEG_feat
             testData=(data[test,:]-mu)/std
 
-            #Fit PCA to training data
+            #Fit PCA to training data (NxM where N = ith time window and M = mth electrode location)
             pca.fit(trainData)
             #Get percentage of explained variance by selected components
             explainedVariance[pNr,k] =  np.sum(pca.explained_variance_ratio_[:numComps])
-            #Tranform data into component space
+            #Tranform data into component space using first 50 PCA components
+            #The transpose of PCA Matrix is 1098 x 50 where 1098 is # of EEG stacked windows and 50 is # of PCA components
+            #The train and test are len(train)x1098 and len(test)x1098, respectively
+            #Output is the spectrogram moved to a the PCA mapping size: len(train)x50
             trainData=np.dot(trainData, pca.components_[:numComps,:].T)
             testData = np.dot(testData, pca.components_[:numComps,:].T)
             
-            #Fit the regression model
+            #trainData is len(train)x50 (low rank)
+            #Fit the regression model using X (trainData) and Y (real spectrogram[train])
+            # trainData = (25614, 50) and spectrogram[train,:] (25614, 23)
             est.fit(trainData, spectrogram[train, :])
+            
+            # Outputs Coefficients of size (23,50) it is transposed when applied to data
+            # est.coef_.shape
+
             #Predict the reconstructed spectrogram for the test data
+            #Shape of reconstructed spectrogram is (2846, 23)
             rec_spec[test, :] = est.predict(testData)
 
             #Evaluate reconstruction of this fold
@@ -184,3 +200,5 @@ if __name__=="__main__":
     np.save(os.path.join(result_path,'linearResults.npy'),allRes)
     np.save(os.path.join(result_path,'randomResults.npy'),randomControl)
     np.save(os.path.join(result_path,'explainedVariance.npy'),explainedVariance)
+    
+test = np.load(r'C:\Users\pseco\Documents\ECE 542 Repositories\ECE 542 Project\ECE-542-Project\Project Data\transformed_data\sub-01_predicted_spec.npy')
