@@ -23,7 +23,7 @@ import torch.optim as optim
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 2. Data Loading & Preparation
-path_output = r'C:\Users\ishit\Downloads'
+path_output = r'C:\Users\Arman\Desktop\ECE-542-Project-main' 
 with open(os.path.join(path_output, 'EEGSpecWindows'), 'rb') as file:
     data2 = pickle.load(file)
 
@@ -36,17 +36,23 @@ for i in sorted(badApples, reverse=True):
         del eegData[i]
         del specData[i]
         
-        
-badOranges = [5, 6, 10, 12, 19, 20, 28, 35, 43, 46, 50, 51, 56, 57, 66, 67, 69, 71, 75, 81, 82, 89, 91, 96, 97, 103]  
-eegData = [df.drop(df.columns[badOranges], axis=1, errors='ignore') for df in eegData]
+
+eegData = [df.drop(df.columns[0], axis=1, errors='ignore') for df in eegData]
 
 random.shuffle(eegData)
 random.shuffle(specData)
+
 
 xTrain = np.array(eegData[0:800])
 yTrain = np.array(specData[0:800])
 xVal   = np.array(eegData[800:1016])
 yVal   = np.array(specData[800:1016])
+
+noiseTrain = np.random.normal(0,0.1,size=xTrain.shape)
+noiseVal = np.random.normal(0,0.1,size=xVal.shape)
+
+xTrain = xTrain+ noiseTrain
+xVal = xVal + noiseVal
 
 
 
@@ -66,23 +72,40 @@ val_loader   = DataLoader(valDataset, batch_size=BATCH_SIZE, shuffle=False)
 # Print shape for the first batch
 for i, (x_batch, y_batch) in enumerate(train_loader):
     if i == 0:
+        x_batch = x_batch.unsqueeze(1)
+        y_batch = y_batch.unsqueeze(1)
         print(f"Batch {i}: x shape = {x_batch.shape}, y shape = {y_batch.shape}")
         break
 
+
+
+print(f"Batch {i}: x shape = {x_batch.shape}, y shape = {y_batch.shape}")
+
 # 4. Model Definition – CNN
 class CNN(nn.Module):
-    def __init__(self, input_size, num_classes):
+    def __init__(self):
         super(CNN, self).__init__()
         self.cnn = nn.Sequential(
-            nn.Conv1d(in_channels=input_size, out_channels=33, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2, stride=2),  # [batch, 33, 148]
-            nn.Conv1d(in_channels=33, out_channels=128, kernel_size=3, stride=1, padding=1),
+            nn.Dropout(0.25),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # [batch, 33, 148]
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2, stride=2)   # [batch, 128, 74]
+            nn.Dropout(0.25),
+            nn.MaxPool2d(kernel_size=2, stride=2),   # [batch, 128, 74]
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Dropout(0.25),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # [batch, 128, 74]
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Dropout(0.25),
+            nn.MaxPool2d(kernel_size=2, stride=2),   # [batch, 128, 74]
         )
-        self.fc = nn.Linear(128 * 74, num_classes)
-
+        
+        self.fc = nn.Linear(27648,1)
+        
     def forward(self, x):
         out = self.cnn(x)                # [batch, 128, 74]
         out = out.view(out.size(0), -1)  # Flatten to [batch, 9472]
@@ -90,12 +113,14 @@ class CNN(nn.Module):
         return out
 #%%
 # 5. Hyperparameters & Model Instantiation
-INPUT_SIZE  = xTrain.shape[2]                 # e.g., 16
+INPUT_SIZE  = xTrain.shape[1]                 # e.g., 16
 OUTPUT_SIZE = y_batch.shape[1]*y_batch.shape[2]            # number of classes
 
 print("Hyperparameters:", INPUT_SIZE, OUTPUT_SIZE)
 
-model = CNN(input_size=INPUT_SIZE, num_classes=OUTPUT_SIZE).to(DEVICE)
+print("Input to model:", x_batch.shape)
+
+model = CNN().to(DEVICE)
 
 # 6. Training Function & Execution
 def train_model(model, train_loader, epochs):
@@ -110,7 +135,8 @@ def train_model(model, train_loader, epochs):
         print("EPOCH:")
         print(epoch)
         for i, (x, y) in enumerate(train_loader):
-            x = x.permute(0, 2, 1).to(DEVICE)  # [batch, channels, seq_len]
+            x = x.unsqueeze(1).to(DEVICE)
+            #x = x.permute(1, 0, 2, 3).to(DEVICE)  # [batch, channels, seq_len]
             y = y.to(DEVICE)
             optimizer.zero_grad()
             y_pred = model(x)
